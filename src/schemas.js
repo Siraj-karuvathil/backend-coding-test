@@ -1,12 +1,12 @@
-'use strict';
+"use strict";
 
 module.exports = (db) => {
-    const createRideTableSchema = `
+  const createRideTableSchema = `
         CREATE TABLE Rides
         (
         rideID INTEGER PRIMARY KEY AUTOINCREMENT,
         startLat DECIMAL NOT NULL,
-        startLong DECIMAL NOT NULL,
+        startLong DECIMAL NOT NULL,  
         endLat DECIMAL NOT NULL,
         endLong DECIMAL NOT NULL,
         riderName TEXT NOT NULL,
@@ -16,7 +16,7 @@ module.exports = (db) => {
         )
     `;
 
-    db.run(createRideTableSchema);
+  db.run(createRideTableSchema);
 
-    return db;
+  return db;
 };
