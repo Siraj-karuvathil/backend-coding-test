@@ -9,7 +9,7 @@ const jsonParser = bodyParser.json();
 module.exports = (db) => {
   app.get("/health", (req, res) => res.send("Healthy"));
 
-  app.post("/rides", jsonParser, (req, res) => {
+  app.post("/rides", jsonParser, async (req, res) => {
     const startLatitude = Number(req.body.start_lat);
     const startLongitude = Number(req.body.start_long);
     const endLatitude = Number(req.body.end_lat);
@@ -75,82 +75,108 @@ module.exports = (db) => {
       req.body.driver_vehicle,
     ];
 
-    const result = db.run(
-      "INSERT INTO Rides(startLat, startLong, endLat, endLong, riderName, driverName, driverVehicle) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      values,
-      function (err) {
-        if (err) {
-          return res.send({
-            error_code: "SERVER_ERROR",
-            message: "Unknown error",
-          });
-        }
+    try {
+      await new Promise((resolve, reject) => {
+        db.run(
+          "INSERT INTO Rides(startLat, startLong, endLat, endLong, riderName, driverName, driverVehicle) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          values,
+          function (err) {
+            if (err) {
+              return reject({
+                error_code: "SERVER_ERROR",
+                message: "Unknown error",
+              });
+            }
+            resolve();
+          }
+        );
+      });
 
+      const rows = await new Promise((resolve, reject) => {
         db.all(
           "SELECT * FROM Rides WHERE rideID = ?",
           this.lastID,
           function (err, rows) {
             if (err) {
-              return res.send({
+              return reject({
                 error_code: "SERVER_ERROR",
                 message: "Unknown error",
               });
             }
-
-            res.send(rows);
+            resolve(rows);
           }
         );
-      }
-    );
+      });
+
+      res.send(rows);
+    } catch (err) {
+      res.send(err);
+    }
   });
 
-  app.get("/rides", (req, res) => {
-    const limit = req.query.limit ? parseInt(req.query.limit) : 10; // default limit is 10
-    const offset = req.query.offset ? parseInt(req.query.offset) : 0; // default offset is 0
+  // Functional functions
+  async function getRides(limit = 10, offset = 0) {
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT * FROM Rides LIMIT ${limit} OFFSET ${offset}`,
+        (err, rows) => {
+          if (err) {
+            reject({
+              error_code: "SERVER_ERROR",
+              message: "Unknown error",
+            });
+          } else if (rows.length === 0) {
+            reject({
+              error_code: "RIDES_NOT_FOUND_ERROR",
+              message: "Could not find any rides",
+            });
+          } else {
+            resolve(rows);
+          }
+        }
+      );
+    });
+  }
 
-    db.all(
-      `SELECT * FROM Rides LIMIT ${limit} OFFSET ${offset}`,
-      function (err, rows) {
+  async function getRideById(id) {
+    return new Promise((resolve, reject) => {
+      db.all(`SELECT * FROM Rides WHERE rideID='${id}'`, (err, rows) => {
         if (err) {
-          return res.send({
+          reject({
             error_code: "SERVER_ERROR",
             message: "Unknown error",
           });
-        }
-
-        if (rows.length === 0) {
-          return res.send({
+        } else if (rows.length === 0) {
+          reject({
             error_code: "RIDES_NOT_FOUND_ERROR",
             message: "Could not find any rides",
           });
+        } else {
+          resolve(rows);
         }
+      });
+    });
+  }
 
-        res.send(rows);
-      }
-    );
+  // Imperative functions
+  app.get("/rides", async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit) : 10; // default limit is 10
+      const offset = req.query.offset ? parseInt(req.query.offset) : 0; // default offset is 0
+      const rows = await getRides(limit, offset);
+      res.send(rows);
+    } catch (error) {
+      res.send(error);
+    }
   });
 
-  app.get("/rides/:id", (req, res) => {
-    db.all(
-      `SELECT * FROM Rides WHERE rideID='${req.params.id}'`,
-      function (err, rows) {
-        if (err) {
-          return res.send({
-            error_code: "SERVER_ERROR",
-            message: "Unknown error",
-          });
-        }
-
-        if (rows.length === 0) {
-          return res.send({
-            error_code: "RIDES_NOT_FOUND_ERROR",
-            message: "Could not find any rides",
-          });
-        }
-
-        res.send(rows);
-      }
-    );
+  app.get("/rides/:id", async (req, res) => {
+    try {
+      const rows = await getRideById(req.params.id);
+      res.send(rows);
+    } catch (error) {
+      res.send(error);
+    }
   });
 
   return app;
